@@ -1,0 +1,22 @@
+# --- switch port ---
+# cmake build trees
+build/
+build-*/
+# build products
+*.nro
+*.nro.sha256
+*.nacp
+*.elf
+
+# game data and saves must never be committed
+th12.exe
+th12.dat
+thbgm.dat
+*.ttc
+*.ttf
+*.rpy
+score*.dat
+th12.cfg
+snapshot/
+replay/
+*.log
