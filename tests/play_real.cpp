@@ -12,7 +12,9 @@
 // MODE: 0 game, 1 practice, 2 extra, started through the title menus (Practice
 // and Extra are unlocked in DATA_DIR's scoreth12.dat first). Frames are saved
 // every EVERY frames; TICKS logical ticks per drawn frame; LIVES=1 keeps the
-// life count topped up.
+// life count topped up. New games use a fixed seed and the scripted input
+// follows frames of play, so a run repeats exactly (compare builds by their
+// PNGs). TH12_PROFILE=1 prints CPU time per frame of play every 600 frames.
 #include "../src/Archive.hpp"
 #include "../src/Audio.hpp"
 #include "../src/Game.hpp"
@@ -55,7 +57,7 @@ int main(int argc,char** argv){
     const std::string out=argv[2];const bool replay2=std::string(argv[3])=="replay2",tour=std::string(argv[3])=="menus",only_ending=std::string(argv[3])=="ending",extras=only_ending||std::string(argv[3])=="extras",full=std::string(argv[3])=="fullgame";
     const int frames=tour||extras||full||replay2?0:std::atoi(argv[3]);
     const int mode=argc>4?std::atoi(argv[4]):0,stage=argc>5?std::atoi(argv[5]):1,character=argc>6?std::atoi(argv[6]):0,shot=argc>7?std::atoi(argv[7]):0,difficulty=argc>8?std::atoi(argv[8]):1,every=argc>9?std::atoi(argv[9]):600,ticks=argc>10?std::atoi(argv[10]):1;const bool lives=argc>11&&std::atoi(argv[11]);
-    char* fake[]{argv[0],argv[1]};host::locate_data(2,fake);host::make_directory(out);
+    char* fake[]{argv[0],argv[1]};host::locate_data(2,fake);host::make_directory(out);std::setvbuf(stdout,nullptr,_IOLBF,0);
     const int full_mode=full&&argc>4?std::atoi(argv[4]):0,full_character=full&&argc>5?std::atoi(argv[5]):0,full_shot=full&&argc>6?std::atoi(argv[6]):0,
         full_difficulty=full&&argc>7?std::atoi(argv[7]):1,full_continue=full&&argc>8?std::atoi(argv[8]):0,full_ticks=full&&argc>9?std::atoi(argv[9]):4;
     if(full&&full_mode==2){Profile p;p.load(host::paths().save);p.record_clear(full_character,full_shot,1,0,6);p.save();}
@@ -69,6 +71,7 @@ int main(int argc,char** argv){
     SDL_Window* window=SDL_CreateWindow("th12",0,0,640,480,SDL_WINDOW_OPENGL|SDL_WINDOW_HIDDEN);SDL_GLContext context=SDL_GL_CreateContext(window);
     if(!context){std::fprintf(stderr,"no GLES context\n");return 1;}
     Game game;if(!game.boot()){std::fprintf(stderr,"boot: %s\n",game.error.c_str());return 1;}
+    if(frames)game.fixed_seed=0x1234; // scripted runs repeat exactly
     double t=0;int shot_index=0;
     const auto save=[&](const char* tag){const u8* p=game.gpu.read_pixels();if(!p)return;char name[256];std::snprintf(name,sizeof name,"%s/%03d-%s.png",out.c_str(),shot_index++,tag);
         write_png(name,p,640*game.gpu.scale(),480*game.gpu.scale(),game.gpu.scale());std::printf("saved %s (%s, stage %d, frame %d)\n",name,game.phase_name(),th12::stageNumber,th12::frame);};
@@ -238,11 +241,11 @@ int main(int argc,char** argv){
         press(Plus,0,30);press(0,InDown,10);press(B);press(0,InUp,10);press(B,0,5);until("title",120);idle(60);save("back-to-title");
         game.shutdown();SDL_GL_DeleteContext(context);SDL_DestroyWindow(window);SDL_Quit();return 0;
     }
-    // Title rows: Start, Extra Start, Practice Start, (Replay, Player Data),
-    // Music Room, Option, Quit; locked rows are skipped. Extra is one down
-    // from Start, Practice four up (Quit, Option, Music Room, Practice).
+    // Title rows: Start, Extra Start, Practice Start, Replay, Player Data,
+    // Music Room, Option, Quit; only a locked Extra Start is skipped. Extra
+    // is one down from Start, Practice six up.
     if(mode==2)press(0,InDown,10);
-    if(mode==1)for(int i=0;i<4;++i)press(0,InUp,10);
+    if(mode==1)for(int i=0;i<6;++i)press(0,InUp,10);
     save("title-row");press(B);until("difficulty",60);idle(10);
     if(mode!=2){for(int i=1;i<difficulty;++i)press(0,InDown,10);for(int i=difficulty;i<1;++i)press(0,InUp,10);}
     save("difficulty");press(B);until("character",60);idle(10);
@@ -258,20 +261,37 @@ int main(int argc,char** argv){
         if(phase=="result-menu"||phase=="title"){for(int i=0;i<40;++i)run(0);save(phase.c_str());break;}
         // Hold shot, sweep left and right, focus half the time; under a boss,
         // steer below it. During dialogue: advance with shot every half
-        // second, and save the first line of each conversation.
-        u32 held=InShot;const int c=(f/90)%4;if(c==1)held|=InLeft;else if(c==3)held|=InRight;if((f/240)%2)held|=InFocus;
+        // second, and save the first line of each conversation. Timed by
+        // frames of play, not loop frames (a load takes a varying number of
+        // those), so a run repeats exactly.
+        const int g=played/std::max(1,ticks);
+        u32 held=InShot;const int c=(g/90)%4;if(c==1)held|=InLeft;else if(c==3)held|=InRight;if((g/240)%2)held|=InFocus;
         if(const auto* boss=th12::primaryBoss()){held&=~u32(InLeft|InRight);const float dx=boss->x-th12::px/128.f;if(dx<-8)held|=InLeft;else if(dx>8)held|=InRight;}
         static bool talking=false;
-        if(th12::dialogue){held=(f%8<2)?InShot:0;if(!talking){talking=true;for(int i=0;i<30;++i)run(0);save("dialogue");
+        if(th12::dialogue){held=(g%8<2)?InShot:0;if(!talking){talking=true;for(int i=0;i<30;++i)run(0);save("dialogue");
             // TH12_TRACE_DIALOGUE: every frame of the first conversation, with
             // one-frame presses, a held press and a held skip.
             static bool traced=false;if(std::getenv("TH12_TRACE_DIALOGUE")&&!traced){traced=true;
                 for(int i=0;i<160;++i){const u32 k=(i==20||i==60)?InShot:(i>=100&&i<110)?InShot:(i>=130&&i<140)?InSkip:0;run(k);char tag[32];std::snprintf(tag,sizeof tag,"trace-%03d%s",i,k?"-key":"");save(tag);}}}}else talking=false;
         static bool seen_loading=false;if(phase=="loading"&&!seen_loading){seen_loading=true;save("loading");}
-        if(f==every*2+7){per_frame=1;key(InPause);for(int i=0;i<20;++i)run(0);save("paused");key(InPause);per_frame=u32(std::max(1,ticks));}
+        static bool paused=false;if(!paused&&phase=="playing"&&g>=every*2+7){paused=true;per_frame=1;key(InPause);for(int i=0;i<20;++i)run(0);save("paused");key(InPause);per_frame=u32(std::max(1,ticks));}
         if(lives&&th12::lives<3)th12::lives=3; // testing only: keep the run going
         run(held);if(phase=="playing")played+=int(per_frame);
-        if(f%every==every-1)save("play");
+        // TH12_PROFILE: CPU ms per displayed frame of play over each 600
+        // frames (mean / worst) for the core ticks, the capture and the draw
+        // submission, ticks + capture percentiles, and draw calls / vertices.
+        static const bool profiling=std::getenv("TH12_PROFILE")!=nullptr;
+        if(profiling&&phase=="playing"){
+            static double sum[3]{},worst[3]{};static u64 draws=0,vertices=0;static u32 most_draws=0,n=0,bossy=0;static std::vector<double> totals;
+            for(int i=0;i<3;++i){sum[i]+=game.frame_timing[i];worst[i]=std::max(worst[i],game.frame_timing[i]);}
+            totals.push_back(game.frame_timing[0]+game.frame_timing[1]);draws+=game.gpu.draws;vertices+=game.gpu.vertices;most_draws=std::max(most_draws,game.gpu.draws);bossy+=th12::primaryBoss()!=nullptr;
+            if(++n==600){
+                std::sort(totals.begin(),totals.end());const auto pct=[&](double q){return totals[std::min(totals.size()-1,size_t(q*double(totals.size())))];};
+                std::printf("profile stage %d frame %5d boss %3u%%: tick %.2f/%.2f capture %.2f/%.2f draw %.2f/%.2f ms; tick+capture median %.2f, 95%% %.2f, 99%% %.2f; draws %llu/%u, vertices %llu\n",
+                    th12::stageNumber,th12::frame,bossy*100/n,sum[0]/n,worst[0],sum[1]/n,worst[1],sum[2]/n,worst[2],pct(.5),pct(.95),pct(.99),(unsigned long long)(draws/n),most_draws,(unsigned long long)(vertices/n));
+                for(int i=0;i<3;++i)sum[i]=worst[i]=0;totals.clear();draws=vertices=0;most_draws=n=bossy=0;}
+        }
+        static int next_shot=every;if(played/std::max(1,ticks)>=next_shot){next_shot+=every;save("play");}
     }
     std::printf("%d frames (%d playing) in %.1fs; stage %d, score %d\n",frames,played,host::seconds()-begin,th12::stageNumber,th12::score*10);
     save("end");game.shutdown();SDL_GL_DeleteContext(context);SDL_DestroyWindow(window);SDL_Quit();return 0;

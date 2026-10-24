@@ -35,11 +35,14 @@ public:
     // draw. Returns false to quit.
     bool frame(const PadSample& pad,u32 ticks,double now_ms);
     void present(i32 width,i32 height){gpu.present(width,height);}
+    void presented(double ms); // present + swap time of the frame just shown (the log)
     void focus_lost();
     bool snapshot(); // '−': BMP into snapshot/
     void shutdown();
     const char* phase_name()const; // host tests and the log
     Renderer gpu;
+    double frame_timing[3]{}; // the last frame's CPU ms: ticks, capture, draw (tools)
+    i32 fixed_seed=-1;        // tools: the RNG seed of new games instead of the clock
 private:
     enum class Phase {Startup,Menu,Loading};
     struct Session {
@@ -67,6 +70,10 @@ private:
     std::unique_ptr<EndingTimeline> ending;AnimationSampler ending_sampler;i32 ending_id=-1;std::vector<std::string> ending_files;
     double fps_since=-1;float fps_value=0;u32 fps_frames=0;double last_frame=-1;
     double timing[3]{};u32 timed_frames=0; // CPU ms per frame: ticks, capture, draw
+    // The log's frame pacing: present + swap, frames shown late (a missed
+    // vsync) and how many followed a frame of over 14 ms of CPU work, catch-up
+    // ticks, and the slowest frame's CPU time.
+    double present_ms=0,worst_present=0,worst[4]{},last_cpu=0;u32 late_frames=0,late_after_work=0,catch_up=0;bool timed_frame=false;
     bool read(const std::string& name,std::vector<u8>& out);
     bool load_bank(i32 bank,const std::string& name,bool optional=false);
     void queue_stage(i32 stage);

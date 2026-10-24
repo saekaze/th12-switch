@@ -109,12 +109,22 @@ void Renderer::release(AnmFile& file){for(auto& e:file.entries)if(e.texture){GLu
 void Renderer::begin(Color c){
     glBindFramebuffer(GL_FRAMEBUFFER,target);glViewport(0,0,GLsizei(640*scale_),GLsizei(480*scale_));glDisable(GL_SCISSOR_TEST);
     glClearColor(c.r,c.g,c.b,c.a);glClear(GL_COLOR_BUFFER_BIT);glUseProgram(program);glBindVertexArray(vao);glBindBuffer(GL_ARRAY_BUFFER,vbo);
-    draws=0;current=0;batch.clear();primitive_=Triangles;blend_=-2;surface_ready=false;material(0);fog_color(0,0,0);
+    draws=vertices=0;current=0;batch.clear();primitive_=Triangles;blend_=-2;surface_ready=false;material(0);fog_color(0,0,0);
+    // A fresh store for this frame's vertices (the GPU may still read the last one).
+    if(!stream_capacity)stream_capacity=size_t(1)<<20;glBufferData(GL_ARRAY_BUFFER,GLsizeiptr(stream_capacity),nullptr,GL_STREAM_DRAW);stream_used=0;
 }
 void Renderer::flush(){
     if(batch.empty())return;glBindTexture(GL_TEXTURE_2D,current);
-    glBufferData(GL_ARRAY_BUFFER,GLsizeiptr(batch.size()*sizeof(Vertex)),batch.data(),GL_STREAM_DRAW);
-    glDrawArrays(primitive_==Triangles?GL_TRIANGLES:primitive_==Lines?GL_LINES:GL_LINE_STRIP,0,GLsizei(batch.size()));++draws;batch.clear();
+    // Each draw appends to the frame's buffer: no new buffer store per draw,
+    // and a range nothing has drawn from yet needs no wait.
+    const size_t bytes=batch.size()*sizeof(Vertex);
+    if(!stream_capacity||stream_used+bytes>stream_capacity){
+        while(stream_capacity<bytes)stream_capacity=std::max<size_t>(stream_capacity*2,size_t(1)<<20);
+        glBufferData(GL_ARRAY_BUFFER,GLsizeiptr(stream_capacity),nullptr,GL_STREAM_DRAW);stream_used=0;
+    }
+    glBufferSubData(GL_ARRAY_BUFFER,GLintptr(stream_used),GLsizeiptr(bytes),batch.data());
+    glDrawArrays(primitive_==Triangles?GL_TRIANGLES:primitive_==Lines?GL_LINES:GL_LINE_STRIP,GLint(stream_used/sizeof(Vertex)),GLsizei(batch.size()));
+    stream_used+=bytes;++draws;vertices+=u32(batch.size());batch.clear();
 }
 void Renderer::primitive(Primitive p){if(primitive_!=p){flush();primitive_=p;}}
 void Renderer::material(i32 blend){

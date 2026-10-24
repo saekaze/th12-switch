@@ -104,7 +104,8 @@ int main(int argc,char** argv){
         const Pad p=read_pad();
         if(!game->frame(p.sample,ticks,now*1000)){ok=game->error.empty();break;}
         if(p.minus&&!snapshot_held)game->snapshot();snapshot_held=p.minus;
-        i32 w=0,h=0;SDL_GL_GetDrawableSize(window,&w,&h);game->present(w,h);SDL_GL_SwapWindow(window);
+        i32 w=0,h=0;SDL_GL_GetDrawableSize(window,&w,&h);
+        const double shown=host::seconds();game->present(w,h);SDL_GL_SwapWindow(window);game->presented((host::seconds()-shown)*1000);
     }
     const std::string why=game->error;game.reset();
     SDL_GL_DeleteContext(context);SDL_DestroyWindow(window);SDL_Quit();

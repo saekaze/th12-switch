@@ -39,9 +39,9 @@ struct Audio::Impl {
         ~Music(){if(attached)ma_sound_uninit(&sound);if(initialized)ma_data_source_uninit(&stream.base);}};
     ma_engine engine{};SDL_AudioDeviceID device=0;bool engine_ready=false,ready=false,suspended=false,refill=true,music_paused=false;
     std::vector<std::vector<u8>> samples;std::array<std::unique_ptr<Voice>,64> voices;std::array<SoundRecord,64> records{};std::array<bool,64> known{};
-    std::unique_ptr<Music> music;FILE* bgm=nullptr;std::vector<char> bgm_buffer;std::vector<MusicTrack> tracks;i32 track=-1;
+    std::unique_ptr<Music> music;FILE* bgm=nullptr;std::vector<char> bgm_buffer;std::unique_ptr<host::BgmReader> reader;std::vector<MusicTrack> tracks;i32 track=-1;
     double fade_total=0,fade_elapsed=0;bool fading=false;
-    ~Impl(){music.reset();for(auto& v:voices)v.reset();if(device)SDL_CloseAudioDevice(device);if(engine_ready)ma_engine_uninit(&engine);if(bgm)std::fclose(bgm);}
+    ~Impl(){music.reset();for(auto& v:voices)v.reset();if(device)SDL_CloseAudioDevice(device);if(engine_ready)ma_engine_uninit(&engine);reader.reset();if(bgm)std::fclose(bgm);}
     u32 queued()const{return device?SDL_GetQueuedAudioSize(device)/8:0;}
 };
 Audio::Audio():impl(std::make_unique<Impl>()){}
@@ -66,7 +66,7 @@ bool Audio::initialize(Archive& archive,const ExeTables& tables){
     // Music: thbgm.fmt (inside th12.dat) + thbgm.dat (optional).
     std::vector<u8> fmt;if(archive.read("thbgm.fmt",fmt))a.tracks=parse_music_layout(fmt);else host::log("audio: thbgm.fmt missing, music disabled");
     a.bgm=std::fopen(host::paths().data_file("thbgm.dat").c_str(),"rb");
-    if(a.bgm){a.bgm_buffer.resize(64*1024);std::setvbuf(a.bgm,a.bgm_buffer.data(),_IOFBF,a.bgm_buffer.size());}
+    if(a.bgm){a.bgm_buffer.resize(64*1024);std::setvbuf(a.bgm,a.bgm_buffer.data(),_IOFBF,a.bgm_buffer.size());a.reader=std::make_unique<host::BgmReader>(a.bgm);}
     else host::log("audio: thbgm.dat not found, music disabled");
     if(a.device)SDL_PauseAudioDevice(a.device,0);a.ready=true;return true;
 }
@@ -92,16 +92,17 @@ void Audio::play_music(i32 index){
     if(index<0||index>=i32(a.tracks.size())){stop_music();return;}
     a.track=index;a.music_paused=false;a.fading=false;if(!a.bgm)return;
     const auto& t=a.tracks[size_t(index)];a.music.reset();auto next=std::make_unique<Impl::Music>();auto& s=next->stream;
-    s.file=a.bgm;s.offset=t.offset;s.frames=t.length/t.align;s.channels=t.channels;s.rate=t.rate;
+    s.reader=a.reader.get();s.offset=t.offset;s.frames=t.length/t.align;s.loop_start=t.loop_start/t.align;s.channels=t.channels;s.rate=t.rate;
     auto config=ma_data_source_config_init();config.vtable=&host::pcm_vtable;
     if(ma_data_source_init(&config,&s.base)!=MA_SUCCESS){host::log("audio: cannot open %s",t.name.c_str());return;}next->initialized=true;
+    a.reader->start(s.offset,s.frames,s.loop_start,s.channels,0);
     if(host::pcm_seek(&s,0)!=MA_SUCCESS){host::log("audio: cannot seek thbgm.dat");return;}
-    ma_data_source_set_loop_point_in_pcm_frames(&s,t.loop_start/t.align,t.length/t.align);
+    ma_data_source_set_loop_point_in_pcm_frames(&s,s.loop_start,s.frames);
     if(ma_sound_init_from_data_source(&a.engine,&s,MA_SOUND_FLAG_NO_SPATIALIZATION,nullptr,&next->sound)!=MA_SUCCESS)return;next->attached=true;
     ma_sound_set_looping(&next->sound,MA_TRUE);ma_sound_set_volume(&next->sound,native_music_gain(bgm_volume));
     a.music=std::move(next);ma_sound_start(&a.music->sound);
 }
-void Audio::stop_music(){auto& a=*impl;if(a.music)ma_sound_stop(&a.music->sound);a.music.reset();a.track=-1;a.music_paused=false;a.fading=false;}
+void Audio::stop_music(){auto& a=*impl;if(a.music)ma_sound_stop(&a.music->sound);a.music.reset();if(a.reader)a.reader->stop();a.track=-1;a.music_paused=false;a.fading=false;}
 std::string Audio::music_name()const{const auto& a=*impl;if(a.track<0||a.track>=i32(a.tracks.size()))return "";std::string n=a.tracks[size_t(a.track)].name;const auto dot=n.find('.');return dot==std::string::npos?n:n.substr(0,dot);}
 bool Audio::music_paused()const{return impl->music_paused;}
 void Audio::fade_music(double seconds){auto& a=*impl;if(!a.music)return;a.fading=true;a.fade_total=std::max(seconds,1e-6);a.fade_elapsed=0;}

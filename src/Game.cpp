@@ -140,7 +140,7 @@ void Game::begin(MenuRun run,std::shared_ptr<const Replay> replay){
         if(replay){
             const ReplayStage* part=replay->stage(stage);if(!part||!start_replay_stage(*replay,*part)){error="replay stage could not start";return;}
         }else{
-            const u32 seed=u32(std::chrono::steady_clock::now().time_since_epoch().count())&65535;
+            const u32 seed=fixed_seed>=0?u32(fixed_seed)&65535:u32(std::chrono::steady_clock::now().time_since_epoch().count())&65535;
             if(th12_start_full_game(run.character,run.shot,difficulty,int(seed),run.mode==ModePractice?1:0)!=1){error="full game initialisation failed";return;}
             n.recorder=std::make_unique<ReplayRecorder>(run.character,run.shot,difficulty,run.mode==ModePractice,profile.config_bytes());
             profile.record_play_start(run.character,run.shot);
@@ -371,6 +371,8 @@ u32 Game::map_buttons(const PadSample& pad)const{
 
 bool Game::frame(const PadSample& pad,u32 ticks,double now){
     // Upstream createFrameRateMeter: displayed frames over wall time, once a second.
+    frame_timing[0]=frame_timing[1]=frame_timing[2]=0;
+    const double interval=last_frame>=0?now-last_frame:0;u32 game_ticks=0;
     if(fps_since<0||now<fps_since){fps_since=now;fps_frames=0;}else{++fps_frames;if(now-fps_since>=1000){fps_value=float(fps_frames*1000/(now-fps_since));fps_since=now;fps_frames=0;}}
     if(last_frame>=0)audio.update(std::clamp(now-last_frame,0.,250.)/1000);last_frame=now;
     audio.pump(); // keep the output queue filled (~0.1-0.14 s ahead)
@@ -424,7 +426,7 @@ bool Game::frame(const PadSample& pad,u32 ticks,double now){
         const bool acted=menus->has_actions();bool blocked=false;
         if(acted){blocked=menus->blocks_session();actions();if(phase==Phase::Loading||quit)break;}
         if(!blocked&&(menus->state.scene==MenuScene::Playing||menus->state.scene==MenuScene::Demo)&&session&&phase==Phase::Menu){
-            {const double t0=host::seconds();game_tick(ui&0x2ff&~u32(InPause),now);timing[0]+=host::seconds()-t0;}
+            {const double t0=host::seconds();game_tick(ui&0x2ff&~u32(InPause),now);const double t=host::seconds()-t0;timing[0]+=t;frame_timing[0]+=t*1000;++game_ticks;}
             handle_flow();captured=false;if(menus->has_actions()){actions();break;}
             if(phase==Phase::Loading)break;
         }
@@ -447,15 +449,26 @@ bool Game::frame(const PadSample& pad,u32 ticks,double now){
     if(in_game&&!captured){const double t0=host::seconds();
         scene->capture({fps_value,session->hud_age,session->replay?0:th12::fullGameFlow.continueCount,session->run.mode==ModePractice||(session->replay&&session->replay->info.practice),
             th12::fullGameFlow.status==th12::FullGameStatus::StageClear,session->high_score});
-        captured=true;timing[1]+=host::seconds()-t0;}
+        captured=true;const double t=host::seconds()-t0;timing[1]+=t;frame_timing[1]=t*1000;}
     if(session&&!session->replay&&phase!=Phase::Loading)th12_set_wall_time(now);
-    {const double t0=host::seconds();draw();timing[2]+=host::seconds()-t0;}
-    // Once a minute of play: average CPU time per frame for the log.
-    if(in_game&&menus->state.scene==MenuScene::Playing&&++timed_frames==3600){
-        host::log("timing (ms/frame): ticks %.2f, capture %.2f, draw %.2f, fps %.1f, stage %d",timing[0]*1000/timed_frames,timing[1]*1000/timed_frames,timing[2]*1000/timed_frames,fps_value,th12::stageNumber);
-        timing[0]=timing[1]=timing[2]=0;timed_frames=0;}
+    {const double t0=host::seconds();draw();const double t=host::seconds()-t0;timing[2]+=t;frame_timing[2]=t*1000;}
+    // Once a minute of play: average CPU time per frame and frame pacing for the log.
+    const bool continued=timed_frame;timed_frame=in_game&&menus->state.scene==MenuScene::Playing;
+    if(timed_frame){
+        const double cpu=frame_timing[0]+frame_timing[1]+frame_timing[2];
+        if(continued&&interval>1000/60.0*1.5){++late_frames;if(last_cpu>14)++late_after_work;}
+        if(game_ticks>1)catch_up+=game_ticks-1;
+        if(cpu>worst[0]){worst[0]=cpu;worst[1]=frame_timing[0];worst[2]=frame_timing[1];worst[3]=frame_timing[2];}
+        last_cpu=cpu;
+    }
+    if(timed_frame&&++timed_frames==3600){
+        host::log("timing (ms/frame): ticks %.2f, capture %.2f, draw %.2f, present %.2f, fps %.1f, stage %d",timing[0]*1000/timed_frames,timing[1]*1000/timed_frames,timing[2]*1000/timed_frames,present_ms/timed_frames,fps_value,th12::stageNumber);
+        host::log("  late frames %u (%u after over 14 ms of work), catch-up ticks %u; slowest frame %.1f ms (ticks %.1f, capture %.1f, draw %.1f), slowest present %.1f ms",
+            late_frames,late_after_work,catch_up,worst[0],worst[1],worst[2],worst[3],worst_present);
+        timing[0]=timing[1]=timing[2]=0;timed_frames=0;present_ms=worst_present=0;for(double& w:worst)w=0;late_frames=late_after_work=catch_up=0;}
     return true;
 }
+void Game::presented(double ms){if(timed_frame){present_ms+=ms;worst_present=std::max(worst_present,ms);}}
 const char* Game::phase_name()const{
     if(phase==Phase::Startup)return "startup";if(phase==Phase::Loading)return "loading";
     switch(menus->state.scene){

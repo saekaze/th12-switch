@@ -137,9 +137,10 @@ xvfb-run -a ./build/th12_host_tests
 | `src/Profile.*` | `scoreth12.dat` / `th12.cfg` in the original formats (`native-profile.mjs`) |
 | `src/Replay.*` | `.rpy` reading, recording and writing (`replay.mjs`, `replay-recorder.mjs`) |
 | `src/Ending.*` | the endings and staff roll (`ending-timeline.mjs`) |
-| `src/Audio.*` / `src/BgmStream.*` | miniaudio mixer; BGM streamed from `thbgm.dat` with the original loop points |
+| `src/Audio.*` / `src/BgmStream.*` | miniaudio mixer; BGM streamed from `thbgm.dat` with the original loop points, read ahead on its own thread |
 | `src/Game.*` | start-up, resource loading, the stage flow, replays, endings and saves (`site/game.mjs`, `stage-loader.mjs`) |
 | `src/Platform.*` | SD paths, files, log |
+| `src/Memory.cpp` | small-block pool behind `new` / `delete` (newlib's `malloc` is slow for the thousands of small allocations a busy frame makes) |
 | `src/main.cpp` | Switch main loop and controls |
 | `platform/switch/icon.jpg` | 256×256 NRO icon (the original game cover) |
 | `scripts/build_switch.sh` | one-shot Switch build |
@@ -159,4 +160,4 @@ The game ticks once per vsync (60 Hz); after a real stall it catches up by at mo
 * **[thpatch / thtk](https://github.com/thpatch/thtk)** — the TH12 archive cipher table.
 * **Switchbrew & devkitPro Team** — the open-source `libnx` SDK and Switch toolchain.
 
-**Licensing:** the Switch port code (`src/main.cpp`, `src/Platform.*`, `src/Archive.*`, `src/ExeTables.*`, `src/Anm.*`, `src/Renderer.*`, `src/TextRaster.*`, `src/BgmStream.*`, `scripts/`, `tests/`, build files) is CC0 1.0 (see `LICENSE`). `core/` is upstream code by Tweet-META under the **MIT** licence, and `src/Animation.*`, `src/Scene.*`, `src/Audio.*`, `src/Game.*`, `src/TitleScenes.*`, `src/TitlePresentation.*`, `src/Profile.*`, `src/Replay.*` and `src/Ending.*` are ports of its MIT-licensed JavaScript and keep that licence — see [`upstream/LICENSE-upstream-MIT.txt`](upstream/LICENSE-upstream-MIT.txt) and [`upstream/NOTICE-upstream.md`](upstream/NOTICE-upstream.md). Bundled third-party headers keep their own licences (`portable/sdl/third_party/`).
+**Licensing:** the Switch port code (`src/main.cpp`, `src/Platform.*`, `src/Memory.cpp`, `src/Archive.*`, `src/ExeTables.*`, `src/Anm.*`, `src/Renderer.*`, `src/TextRaster.*`, `src/BgmStream.*`, `scripts/`, `tests/`, build files) is CC0 1.0 (see `LICENSE`). `core/` is upstream code by Tweet-META under the **MIT** licence, and `src/Animation.*`, `src/Scene.*`, `src/Audio.*`, `src/Game.*`, `src/TitleScenes.*`, `src/TitlePresentation.*`, `src/Profile.*`, `src/Replay.*` and `src/Ending.*` are ports of its MIT-licensed JavaScript and keep that licence — see [`upstream/LICENSE-upstream-MIT.txt`](upstream/LICENSE-upstream-MIT.txt) and [`upstream/NOTICE-upstream.md`](upstream/NOTICE-upstream.md). Bundled third-party headers keep their own licences (`portable/sdl/third_party/`).

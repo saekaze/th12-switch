@@ -199,8 +199,8 @@ void Scene::capture(const Options& o){
     // Logical VM poses (128-byte ABI) and their draw schedule.
     const i32 count=th12_anm_draw();const auto* logical=static_cast<const AnimationPose*>(th12_anm_draw_ptr());
     const i32 meshes=th12_mesh_draw();
-    std::vector<u32> owners;owners.reserve(size_t(count+meshes));
-    std::vector<Pose> logical_poses;logical_poses.reserve(size_t(count));
+    owners.clear();owners.reserve(size_t(count+meshes));
+    logical_poses.clear();logical_poses.reserve(size_t(count));
     for(i32 i=0;i<count;++i){
         const auto& r=logical[i];Pose p;auto& a=p.a;
         a.bank=r.bank;a.sprite=r.sprite;a.layer=r.layer;a.mode=r.mode;a.anchor_x=r.anchorX;a.anchor_y=r.anchorY;a.blend=r.blend;a.geometry_count=r.segments;
@@ -356,11 +356,14 @@ void Scene::order(){
     using namespace th12;
     // orderPresentation: schedule metadata for logical VMs and pass-0 meshes.
     const i32 count=th12_anm_schedule_count();const auto* schedule=static_cast<const AnimationDrawSchedule*>(th12_anm_schedule_ptr());
-    std::unordered_map<u32,const AnimationDrawSchedule*> by_id;by_id.reserve(size_t(count));for(i32 i=0;i<count;++i)by_id.emplace(schedule[i].id,&schedule[i]);
+    // Schedule entries by id (the first entry for an id wins), without a hash map per frame.
+    schedule_ids.clear();for(i32 i=0;i<count;++i)schedule_ids.emplace_back(schedule[i].id,u32(i));std::sort(schedule_ids.begin(),schedule_ids.end());
+    const auto by_id=[&](u32 id)->const AnimationDrawSchedule*{const auto it=std::lower_bound(schedule_ids.begin(),schedule_ids.end(),std::pair<u32,u32>{id,0});
+        return it!=schedule_ids.end()&&it->first==id?&schedule[it->second]:nullptr;};
     sorted.clear();sorted.reserve(poses.size());
     for(u32 index=0;index<poses.size();++index){
         Pose& p=poses[index];const AnimationDrawSchedule* m=nullptr;
-        if(p.logical||p.mesh_pass0){const auto it=by_id.find(p.id);if(it!=by_id.end())m=it->second;}
+        if(p.logical||p.mesh_pass0)m=by_id(p.id);
         const i32 priority=m?m->priority:p.mesh_pass0?layer_priority(p.a.layer):p.has_priority?p.priority:layer_priority(p.a.layer);
         const i32 clip=m?i32(m->clip):p.clip>=0?p.clip:p.clipped>=0?(p.clipped?2:0):priority<43?2:0;
         if(!(priority>=0))continue;
@@ -493,15 +496,17 @@ void Scene::render(){
     for(const u32 at:sorted){
         const Pose& original=poses[at];
         if(has_surface)stage_surface(original.priority,current_clip,copied,composited);
-        Pose p=original;const float* pose_shake=nullptr;
-        if(shaking&&p.priority<42&&p.kind!=Pose::Mesh){
+        const Pose* use=&original;const float* pose_shake=nullptr;
+        if(shaking&&original.priority<42&&original.kind!=Pose::Mesh){
             // Native sprite corners apply shake at submission (modes 0/1, font
             // text); shakePresentation moves other positioned poses, except
             // modes >= 14, which submit already formed vertices.
-            const bool appearance=p.kind==Pose::State||p.kind==Pose::Beam||p.kind==Pose::DialogueLine;
-            if(p.kind==Pose::NativeText||(appearance&&(p.a.mode==0||p.a.mode==1)))pose_shake=rounded;
-            else if((appearance&&p.a.mode<14)||p.kind==Pose::Trail||p.kind==Pose::BeamTrail){p.x=f32(double(p.x)+rounded[0]);p.y=f32(double(p.y)+rounded[1]);}
+            const bool appearance=original.kind==Pose::State||original.kind==Pose::Beam||original.kind==Pose::DialogueLine;
+            if(original.kind==Pose::NativeText||(appearance&&(original.a.mode==0||original.a.mode==1)))pose_shake=rounded;
+            else if((appearance&&original.a.mode<14)||original.kind==Pose::Trail||original.kind==Pose::BeamTrail){
+                shaken=original;shaken.x=f32(double(original.x)+rounded[0]);shaken.y=f32(double(original.y)+rounded[1]);use=&shaken;}
         }
+        const Pose& p=*use;
         if(p.clip!=current_clip){gpu.clip(p.clip);current_clip=p.clip;}
         switch(p.kind){
         case Pose::NativeText:render_text(texts[p.item],pose_shake);break;

@@ -67,7 +67,8 @@ private:
     Renderer& gpu;TextRaster& raster;Banks& banks;const ExeTables& exe;AnimationSampler sampler_;
     StdGeometry geometry;i32 geometry_stage=0;i32 last_frame=-1;
     std::vector<Pose> poses;std::vector<u32> sorted;std::vector<TextDescriptor> texts;std::vector<Dialogue> dialogues;std::vector<Triangle> triangles;
-    std::vector<Appearance> scratch;std::array<float,41> hud{};std::array<float,2> shake{};bool has_surface=false;Color fog{0,0,0,1};
+    std::vector<Appearance> scratch;std::vector<Pose> logical_poses;std::vector<u32> owners;std::vector<std::pair<u32,u32>> schedule_ids;Pose shaken; // per-frame scratch
+    std::array<float,41> hud{};std::array<float,2> shake{};bool has_surface=false;Color fog{0,0,0,1};
     struct Cached {std::string key;Texture texture;};std::list<Cached> dialogue_cache,menu_cache;
     const AnmSprite* sprite(i32 bank,i32 id)const;Texture texture(i32 bank,i32 entry)const;
     void add(i32 bank,i32 script,i32 age,float x,float y,float angle,float scale,std::optional<BulletVariant> variant,const SampleOptions& sampling,float alpha,i32 priority=-1,i8 clipped=-1);

@@ -8,7 +8,7 @@
 
 | Upstream path | Here | Changes |
 | :--- | :--- | :--- |
-| `src/game/*` | `core/game/` | none |
+| `src/game/*` | `core/game/` | `Presentation.cpp`: `captureAnimationDraw` looks up the hostile bullets in a sorted vector instead of two hash maps rebuilt every frame (same output) |
 | `src/wasm/Exports.cpp`, `src/wasm/Api.hpp` | `core/wasm/` | none |
 | `src/*.hpp` (compatibility headers) | `core/` | none |
 | `LICENSE`, `NOTICE.md` | `upstream/` | renamed |
