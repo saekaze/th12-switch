@@ -24,15 +24,10 @@ Companion to my other Touhou Switch ports — all of them are listed on the [Tou
 
 ## ✨ Key Features
 
-* 🏮 **The Original Menus:** start-up screen, title, selection pages, pause, continue, results and the loading indicator are the game's own `title.anm` / `front.anm` / `ascii.anm` animations, with the original timing and sounds.
-* ⬛ **OLED-Friendly Pillarboxing:** the original 640×480 picture, drawn at 1280×960, is centred with pure black (`#000000`) bars and an aspect-correct upscale.
-* 📦 **Reads Your Original Files:** `th12.dat` and `thbgm.dat` are read in place, and the sound and bullet tables come straight from your `th12.exe`. Nothing is unpacked or converted.
-* 🔊 **Full Audio:** the original sound effects, and the BGM streamed from `thbgm.dat` with its original loop points.
-* 🎬 **Replays:** saved after a game or from the pause menu, watched by stage, with fast-forward and slow motion.
-* 🈂️ **Japanese Text Without Windows:** dialogue, spell card names and menu text are drawn with FreeType from `msgothic.ttc` / `msmincho.ttc` (or the Switch's built-in Japanese font).
-* 🎮 **Remappable Controls:** the same default layout as every Touhou Switch port; the in-game **Option → Key Config** can rebind it.
-* 🌏 **Language-Aware Title:** hbmenu shows `東方星蓮船　～ Undefined Fantastic Object.` on consoles set to 日本語 and the romanised title everywhere else.
-* 💾 **Saves Next to the Data:** `scoreth12.dat`, `th12.cfg`, replays (`replay/th12_01.rpy` …) and snapshots are written into the SD folder the game loaded from.
+* Reads your original `th12.exe`, `th12.dat` and `thbgm.dat` in place; nothing is unpacked or converted.
+* Saves and replays in the PC formats (`scoreth12.dat`, `th12.cfg`, `replay/`), written next to the game data.
+* The 4:3 picture is centred with black bars.
+* Japanese text from `msgothic.ttc`, or the Switch's own Japanese font.
 
 ---
 
