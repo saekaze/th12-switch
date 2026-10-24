@@ -3,6 +3,7 @@
 #pragma once
 #include "Platform.hpp"
 #include <cstdio>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 
@@ -23,12 +24,13 @@ public:
     bool opened()const{return file!=nullptr;}
     // Names are matched without case, like the original's lookup.
     const Entry* find(const std::string& name)const;
+    // Safe to call from a loader thread while the game thread reads too.
     bool read(const std::string& name,std::vector<u8>& output);
     std::vector<Entry> entries;
     std::string error;
     // Builds a THA1 archive for the host tests (entries stored, or literal-only LZSS).
     static std::vector<u8> build_for_tests(const std::vector<std::pair<std::string,std::vector<u8>>>& files,bool compress=false);
 private:
-    FILE* file=nullptr;std::unordered_map<std::string,size_t> index;
+    FILE* file=nullptr;std::unordered_map<std::string,size_t> index;std::mutex mutex; // the file position and `error`
 };
 }

@@ -28,7 +28,7 @@ void Game::shutdown(){
     if(!scene)return;
     // Closing from the HOME menu mid-run keeps play time, unlocks and card history.
     if(menus)save_profile();
-    scene->drop_text_cache();
+    prefetch.reset();scene->drop_text_cache();
     for(auto& b:banks.slots)if(b){Renderer::release(*b);b.reset();}
     ending.reset();title.reset();menus.reset();signature.reset();indicator.reset();retiring.clear();scene.reset();gpu.shutdown();
 }
@@ -130,6 +130,7 @@ void Game::begin(MenuRun run,std::shared_ptr<const Replay> replay){
     const i32 stage=playback?run.stage:run.mode==ModePractice?run.stage:run.mode==ModeExtra?7:1;
     const i32 difficulty=playback?replay->info.difficulty:run.mode==ModeExtra?4:run.difficulty;
     if(session&&!session->replay)save_profile();
+    prefetch.reset();
     phase=Phase::Loading;held_frame=false;show_indicator();audio.stop_effects();ending.reset();pending_result.reset();
     queue_stage(stage);
     after_jobs=[this,run,stage,difficulty,replay]{
@@ -138,7 +139,7 @@ void Game::begin(MenuRun run,std::shared_ptr<const Replay> replay){
         if(th12_load_spell_history(words.data(),int(words.size()))!=1)host::log("spell history rejected");
         Session n;n.run=run;n.run.difficulty=difficulty;n.run.stage=stage;n.stage=stage;n.replay=replay;
         if(replay){
-            const ReplayStage* part=replay->stage(stage);if(!part||!start_replay_stage(*replay,*part)){error="replay stage could not start";return;}
+            const ReplayStage* part=replay->stage(stage);if(!part||!start_replay_stage(*replay,*part,run.mode!=ModeDemo,false)){error="replay stage could not start";return;}
         }else{
             const u32 seed=fixed_seed>=0?u32(fixed_seed)&65535:u32(std::chrono::steady_clock::now().time_since_epoch().count())&65535;
             if(th12_start_full_game(run.character,run.shot,difficulty,int(seed),run.mode==ModePractice?1:0)!=1){error="full game initialisation failed";return;}
@@ -159,10 +160,12 @@ void Game::begin(MenuRun run,std::shared_ptr<const Replay> replay){
     };
 }
 // upstream startReplayStage: the stage header's 17 words and 21 spell times.
-bool Game::start_replay_stage(const Replay& replay,const ReplayStage& stage){
+bool Game::start_replay_stage(const Replay& replay,const ReplayStage& stage,bool flow,bool fade_in){
     std::array<i32,38> words{};const auto initial=stage.initial.words();
     std::copy(initial.begin(),initial.end(),words.begin());std::copy(stage.spell_times.begin(),stage.spell_times.end(),words.begin()+17);
-    return th12_start_replay(replay.info.character,replay.info.shot,replay.info.difficulty,stage.seed,words.data(),38)==1;
+    if(th12_start_replay(replay.info.character,replay.info.shot,replay.info.difficulty,stage.seed,words.data(),38)!=1)return false;
+    if(flow&&!replay.info.practice)th12_replay_stage_flow(fade_in?1:0);
+    return true;
 }
 // The stage boundary the core recorded before the main routine's birth.
 void Game::record_stage(){
@@ -180,25 +183,84 @@ void Game::play_replay(const std::string& file,i32 stage,bool demo){
     run.stage=replay->stage(stage)?stage:replay->stages.front().number;run.replay_file=file;
     begin(run,std::move(replay));
 }
+i32 Game::stage_after()const{
+    const auto& s=*session;const ReplayStage* part=s.replay?s.replay->after(s.stage):nullptr;
+    return s.replay?(part?part->number:0):th12::fullGameFlow.nextStage;
+}
 void Game::next_stage(){
     auto& s=*session;
     if(s.run.mode==ModeDemo){menus->return_title();return;}
     if(!s.replay&&s.run.mode!=ModePractice)profile.record_stage_clear(s.run.character,s.run.shot,s.run.difficulty,s.stage,i64(th12_score_stored())*10);
     if(s.recorder)s.recorder->finish_stage();
-    const ReplayStage* part=s.replay?s.replay->after(s.stage):nullptr;
-    const i32 stage=s.replay?(part?part->number:0):th12::fullGameFlow.nextStage;
-    if(!stage){complete_run(true);return;}
+    const i32 stage=stage_after();
+    if(!stage){prefetch.reset();complete_run(true);return;}
+    if(prefetch&&prefetch->next.stage==stage){
+        // Read during the clear: switch over now, like the original.
+        const double t0=host::seconds();const bool waited=!prefetch->done;
+        if(prefetch->loader.joinable())prefetch->loader.join();
+        StageFiles next=std::move(prefetch->next);prefetch.reset();
+        if(next.error.empty()){install_stage(next);enter_stage(stage);host::log("  switched in %.0f ms%s",(host::seconds()-t0)*1000,waited?" (waited for the read)":"");return;}
+        host::log("stage %d: %s; loading it again",stage,next.error.c_str());
+    }
+    prefetch.reset();
     phase=Phase::Loading;held_frame=true;show_indicator();
     queue_stage(stage);
-    after_jobs=[this,stage]{
-        if(!load_core_stage(stage))return;
-        auto& s=*session;scene->reset_presentation();s.stage=stage;s.previous=0;s.cursor=0;s.result_key.clear();s.spell_count=0;
-        if(s.replay){if(!start_replay_stage(*s.replay,*s.replay->stage(stage))){error="replay stage could not start";return;}}
-        else{if(th12_start_next_stage()!=1){error="stage carry-over failed";return;}record_stage();save_profile();}
-        s.music_serial=th12_music_serial();audio.play_music(th12_music_track());if(const auto id=audio.music_name();!s.replay&&!id.empty())profile.unlock_music(id);
-        retire_indicator();held_frame=false;phase=Phase::Menu;captured=false;
-        host::log("stage %d",stage);
-    };
+    after_jobs=[this,stage]{enter_stage(stage);};
+}
+void Game::enter_stage(i32 stage){
+    if(!load_core_stage(stage))return;
+    auto& s=*session;scene->reset_presentation();s.stage=stage;s.previous=0;s.cursor=0;s.result_key.clear();s.spell_count=0;
+    if(s.replay){if(!start_replay_stage(*s.replay,*s.replay->stage(stage),s.run.mode!=ModeDemo,true)){error="replay stage could not start";return;}}
+    else{if(th12_start_next_stage()!=1){error="stage carry-over failed";return;}record_stage();save_profile();}
+    s.music_serial=th12_music_serial();audio.play_music(th12_music_track());if(const auto id=audio.music_name();!s.replay&&!id.empty())profile.unlock_music(id);
+    retire_indicator();held_frame=false;phase=Phase::Menu;captured=false;
+    host::log("stage %d",stage);
+}
+// The same files and banks as queue_stage's jobs, without the renderer.
+bool Game::read_stage(Archive& archive,i32 stage,StageFiles& out){
+    const std::string n=two(stage);std::string why;out.stage=stage;
+    std::vector<std::string> names{"stage"+n+".ecl","stage"+n+".std"};if(stage==7)names.push_back("stage07boss.ecl");
+    for(i32 i=0;i<6;++i)names.push_back("st"+n+"_0"+std::to_string(i>>1)+(i%2?"b":"a")+".msg");
+    for(const auto& name:names)if(!archive.read(name,out.files[name])){out.error="cannot read "+name;return false;}
+    if(!out.geometry.parse(out.files["stage"+n+".std"],why)){out.error="stage"+n+".std: "+why;return false;}
+    const struct {i32 slot;std::string name;bool optional;} banks[]{{BankStageEnemy,"stgenm"+n,false},{BankStageEnemyM,"stgenm"+n+"m",true},{BankLogo,"st"+n+"logo",false},{BankStage,"stage"+n,false}};
+    for(const auto& b:banks){
+        StageFiles::Bank bank;bank.slot=b.slot;const std::string file=b.name+".anm";
+        if(b.optional&&!archive.find(file))bank.present=false;
+        else{if(!archive.read(file,bank.bytes)){out.error="cannot read "+file;return false;}
+            bank.anm=std::make_shared<AnmFile>();if(!parse_anm(b.name,bank.bytes,*bank.anm,why)){out.error=why;return false;}}
+        out.banks.push_back(std::move(bank));
+    }
+    return true;
+}
+void Game::install_stage(StageFiles& next){
+    for(auto& b:next.banks){
+        auto& slot=banks.slots[size_t(b.slot)];const std::string key="bank"+std::to_string(b.slot);
+        if(!b.present){if(slot){Renderer::release(*slot);slot.reset();}files.erase(key);continue;}
+        if(!b.uploaded){gpu.upload(*b.anm);b.uploaded=true;}
+        if(slot)Renderer::release(*slot);slot=std::move(b.anm);files[key]=std::move(b.bytes);
+    }
+    next.banks.clear();
+    for(auto& [name,bytes]:next.files)files[name]=std::move(bytes);
+    scene->set_geometry(next.stage,std::move(next.geometry));
+}
+Game::Prefetch::~Prefetch(){
+    if(loader.joinable())loader.join();
+    for(auto& b:next.banks)if(b.anm)Renderer::release(*b.anm); // never installed; textures uploaded so far
+}
+// Once per frame of play: start reading the next stage when a clear begins,
+// then upload its textures one per frame.
+void Game::watch_prefetch(){
+    if(!session||phase!=Phase::Menu||session->run.mode==ModeDemo)return;
+    if(!prefetch){
+        if(th12::fullGameFlow.status!=th12::FullGameStatus::StageClear)return;
+        const i32 stage=stage_after();if(!stage)return;
+        prefetch=std::make_unique<Prefetch>();prefetch->next.stage=stage;
+        Prefetch* p=prefetch.get();p->loader=std::thread([this,p,stage]{read_stage(archive,stage,p->next);p->done=true;});
+        return;
+    }
+    if(!prefetch->done)return;
+    for(auto& b:prefetch->next.banks)if(b.present&&!b.uploaded){if(gpu.upload_next(*b.anm))break;b.uploaded=true;}
 }
 MenuContext Game::result_data(bool clear){
     MenuContext c;if(!session)return c;const auto& f=th12::fullGameFlow;
@@ -274,6 +336,7 @@ void Game::save_replay(i32 slot,const std::string& name,const MenuContext& r){
     profile.set_last_name(name);profile.save();menus->rescan_replays();
 }
 void Game::return_title(){
+    prefetch.reset();
     if(session&&session->run.mode!=ModeDemo)audio.stop_music();
     show_indicator();if(session&&!session->replay)save_profile();session.reset();ending.reset();pending_result.reset();audio.stop_effects();clear_keys();
     retire_indicator();
@@ -444,6 +507,7 @@ bool Game::frame(const PadSample& pad,u32 ticks,double now){
         }
     }
     if(quit)return false;
+    watch_prefetch();
     // One capture per displayed frame; the sampler simulates any skipped ages.
     const bool in_game=session&&phase==Phase::Menu;
     if(in_game&&!captured){const double t0=host::seconds();

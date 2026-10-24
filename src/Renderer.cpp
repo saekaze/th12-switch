@@ -101,8 +101,10 @@ u32 Renderer::create_texture(u32 w,u32 h,const u8* rgba,bool clamp){
     states[t]={false,!clamp,!clamp};current=0;return t;
 }
 void Renderer::delete_texture(u32 name){if(!name)return;flush();if(current==name)current=0;states.erase(name);GLuint t=name;glDeleteTextures(1,&t);}
-void Renderer::upload(AnmFile& file){
-    for(auto& e:file.entries)if(e.has_image&&!e.rgba.empty()&&!e.texture){e.texture=create_texture(e.texture_width,e.texture_height,e.rgba.data(),false);std::vector<u8>().swap(e.rgba);}
+void Renderer::upload(AnmFile& file){while(upload_next(file)){}}
+bool Renderer::upload_next(AnmFile& file){
+    for(auto& e:file.entries)if(e.has_image&&!e.rgba.empty()&&!e.texture){e.texture=create_texture(e.texture_width,e.texture_height,e.rgba.data(),false);std::vector<u8>().swap(e.rgba);return true;}
+    return false;
 }
 void Renderer::release(AnmFile& file){for(auto& e:file.entries)if(e.texture){GLuint t=e.texture;glDeleteTextures(1,&t);e.texture=0;}}
 

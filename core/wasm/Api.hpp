@@ -51,6 +51,10 @@ int th12_spell_history_size();
 void th12_set_wall_time(double milliseconds);
 int th12_start_replay(int character, int shot, int difficulty, int seed, const int32_t* initial,
                       int count);
+// Switch port: run the full-game stage flow for the replay stage just started,
+// so its recorded clear ticks play the clear sequence and field fade like the
+// original. fade_in: the stage fades in, as after a stage transition.
+int th12_replay_stage_flow(int fade_in);
 #if defined(TH12_DIAGNOSTIC) && TH12_DIAGNOSTIC
 int th12_diagnostic_build();
 const char* th12_diagnostic_state();

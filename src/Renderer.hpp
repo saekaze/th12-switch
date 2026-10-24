@@ -28,6 +28,7 @@ public:
     u32 scale()const{return scale_;}
     // Textures
     void upload(AnmFile& file);       // every entry with pixels; frees the CPU copy
+    bool upload_next(AnmFile& file);  // one such entry (false: none left)
     static void release(AnmFile& file);
     Texture texture_for(const AnmEntry& e)const{return {e.texture,float(e.texture_width),float(e.texture_height),false,true,e.texture!=0};}
     u32 create_texture(u32 w,u32 h,const u8* rgba,bool clamp);

@@ -9,7 +9,7 @@
 | Upstream path | Here | Changes |
 | :--- | :--- | :--- |
 | `src/game/*` | `core/game/` | `Presentation.cpp`: `captureAnimationDraw` looks up the hostile bullets in a sorted vector instead of two hash maps rebuilt every frame (same output) |
-| `src/wasm/Exports.cpp`, `src/wasm/Api.hpp` | `core/wasm/` | none |
+| `src/wasm/Exports.cpp`, `src/wasm/Api.hpp` | `core/wasm/` | `th12_replay_stage_flow` added: a story or Extra replay stage runs the full-game stage flow, so its recorded clear ticks play the clear sequence and field fade |
 | `src/*.hpp` (compatibility headers) | `core/` | none |
 | `LICENSE`, `NOTICE.md` | `upstream/` | renamed |
 
@@ -34,5 +34,7 @@ Upstream's JavaScript is rewritten in C++ in `src/`, following its behaviour:
 | `scripts/prepare-assets.py` (ANM), `prepare-presentation.py` (STD, bullet types), `prepare-sounds.py`, `prepare-music.py` | read at run time from `th12.dat` / `th12.exe` |
 
 Where upstream read the core's JSON snapshots (message, spell, UFO, boss HUD, stage flow, background), the host reads the same core fields directly. Binary records (poses, schedule, meshes, sprites, sound events, HUD) use the same exported C ABI.
+
+Between stages, the next stage is read on a loader thread while the clear bonus and field fade play, and takes over as the fade ends, like the original (4227dc creates the incoming stage right after 4057e0's 30-tick fade); upstream blacked out the field behind its loading overlay instead. Story and Extra replays play the same clear sequence (upstream held the picture still for the recorded clear ticks); practice replays and the title demo keep upstream's handling.
 
 Known deviation: upstream's scroll-velocity interpolation (ANM ops 93/94) starts from an undefined value in JavaScript; here it starts from the current scroll velocity.

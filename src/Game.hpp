@@ -14,9 +14,11 @@
 #include "TextRaster.hpp"
 #include "TitlePresentation.hpp"
 #include "TitleScenes.hpp"
+#include <atomic>
 #include <deque>
 #include <functional>
 #include <optional>
+#include <thread>
 
 namespace th12host {
 // Core input bits (native held word); menus also read Enter and Retry.
@@ -68,6 +70,16 @@ private:
     u32 slow_frames=0;     // replay slow motion: one tick every fourth frame
     // The ending and staff roll.
     std::unique_ptr<EndingTimeline> ending;AnimationSampler ending_sampler;i32 ending_id=-1;std::vector<std::string> ending_files;
+    // The next stage, read and parsed on a loader thread while the stage-clear
+    // sequence plays (the original builds the incoming stage as its 30-tick
+    // field fade ends, with no loading screen); textures are uploaded one per
+    // frame, and next_stage() switches over within the frame.
+    struct StageFiles {
+        struct Bank {i32 slot=0;bool present=true,uploaded=false;std::shared_ptr<AnmFile> anm;std::vector<u8> bytes;};
+        i32 stage=0;std::unordered_map<std::string,std::vector<u8>> files;StdGeometry geometry;std::vector<Bank> banks;std::string error;
+    };
+    struct Prefetch {StageFiles next;std::thread loader;std::atomic<bool> done{false};~Prefetch();};
+    std::unique_ptr<Prefetch> prefetch;
     double fps_since=-1;float fps_value=0;u32 fps_frames=0;double last_frame=-1;
     double timing[3]{};u32 timed_frames=0; // CPU ms per frame: ticks, capture, draw
     // The log's frame pacing: present + swap, frames shown late (a missed
@@ -79,10 +91,17 @@ private:
     void queue_stage(i32 stage);
     bool load_core_stage(i32 stage);
     void begin(MenuRun run,std::shared_ptr<const Replay> replay=nullptr);
-    bool start_replay_stage(const Replay& replay,const ReplayStage& stage);
+    // flow: story/Extra replays (not practice ones or the demo) run the core's
+    // stage flow, so a clear plays out as in the original; fade_in after a transition.
+    bool start_replay_stage(const Replay& replay,const ReplayStage& stage,bool flow,bool fade_in);
     void record_stage();
     void play_replay(const std::string& file,i32 stage,bool demo);
     void next_stage();
+    void enter_stage(i32 stage); // the loaded stage takes over (end of next_stage)
+    i32 stage_after()const;      // the stage a clear leads to (0: none)
+    void watch_prefetch();
+    static bool read_stage(Archive& archive,i32 stage,StageFiles& out);
+    void install_stage(StageFiles& next);
     void game_tick(u32 held,double now);
     void handle_flow();
     MenuContext result_data(bool clear);

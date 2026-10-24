@@ -99,13 +99,14 @@ const Archive::Entry* Archive::find(const std::string& name)const{
     const auto it=index.find(lower(key));return it==index.end()?nullptr:&entries[it->second];
 }
 bool Archive::read(const std::string& name,std::vector<u8>& output){
-    output.clear();const Entry* e=find(name);if(!file||!e){error="missing "+name;return false;}
+    output.clear();const Entry* e=find(name);if(!file||!e){std::lock_guard<std::mutex> lock(mutex);error="missing "+name;return false;}
     std::vector<u8> raw(e->packed),decoded(e->packed);
-    std::fseek(file,long(e->offset),SEEK_SET);if(e->packed&&std::fread(raw.data(),1,e->packed,file)!=e->packed){error="unreadable "+name;return false;}
+    {std::lock_guard<std::mutex> lock(mutex);
+        std::fseek(file,long(e->offset),SEEK_SET);if(e->packed&&std::fread(raw.data(),1,e->packed,file)!=e->packed){error="unreadable "+name;return false;}}
     resource_decrypt(raw.data(),decoded.data(),e->packed,cipher(e->name));
     if(e->packed==e->size){output.swap(decoded);return true;}
     output.resize(e->size);u32 written=0;
-    if(!lzss_decode(decoded.data(),u32(decoded.size()),output.data(),u32(output.size()),written)||written!=e->size){output.clear();error="corrupt "+name;return false;}
+    if(!lzss_decode(decoded.data(),u32(decoded.size()),output.data(),u32(output.size()),written)||written!=e->size){output.clear();std::lock_guard<std::mutex> lock(mutex);error="corrupt "+name;return false;}
     return true;
 }
 std::vector<u8> Archive::build_for_tests(const std::vector<std::pair<std::string,std::vector<u8>>>& files,bool compress){

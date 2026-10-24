@@ -164,6 +164,14 @@ int th12_start_replay(int c, int s, int d, int seed, const int32_t* initial, int
   }
   return 1;
 }
+int th12_replay_stage_flow(int fade_in) {
+  if (!th12::spellState.replayWallClock)
+    return 0;
+  th12::setFullGameMode(false);
+  if (fade_in)
+    th12::fullGameFlow.entryFadeAge = 0;
+  return 1;
+}
 const char* th12_state() {
   return th12::captureState().c_str();
 }
