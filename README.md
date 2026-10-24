@@ -9,7 +9,7 @@ A native homebrew port of ZUN's 2009 bullet hell **Touhou 12: Undefined Fantasti
 
 This build runs the C++20 reimplementation of TH12 1.00b by [Tweet-META](https://github.com/Tweet-META/th12) (also published at [Ritosa2333/th12](https://github.com/Ritosa2333/th12) and in [YomotsuHisami/eagler-touhou](https://github.com/YomotsuHisami/eagler-touhou)), compiled **natively for ARM64** (no wasm, no emulation). Its browser front-end is rewritten in C++ for SDL2 on an OpenGL ES 3 context — no Linux, Box64 or Wine involved.
 
-Companion to the [Touhou 6](https://github.com/saekaze/th06-switch), [7](https://github.com/saekaze/th07-switch), [7.5](https://github.com/saekaze/th075-switch), [8](https://github.com/saekaze/th08-switch), [9](https://github.com/saekaze/th09-switch), [10](https://github.com/saekaze/th10-switch), [11](https://github.com/saekaze/th11-switch) and [15](https://github.com/saekaze/th15-switch) Switch ports, with the same `touhou12.nro` + `sd:/switch/touhou/touhou12/` layout.
+Companion to my other Touhou Switch ports — all of them are listed on the [Touhou Project on Nintendo Switch hub](https://github.com/saekaze/touhou-switch) — with the same `touhou12.nro` + `sd:/switch/touhou/touhou12/` layout.
 
 ---
 
