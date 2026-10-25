@@ -1,5 +1,14 @@
 <img width="256" height="256" alt="Touhou 12" src="https://raw.githubusercontent.com/saekaze/th12-switch/main/platform/switch/icon.jpg" />
 
+## Touhou 12 — 1.00b-r2
+
+* 🎬 **Stage transitions like the original.** After a stage clear the field fades out and the next stage fades in, with no black loading screen in between: it now loads in the background during the clear bonus. Replays play the clear sequence too.
+* ⚡ **Smoother boss fights.** Fewer frame drops in dense patterns: music is read ahead in the background instead of from the SD card mid-frame, and drawing and memory allocation got lighter.
+
+Update: replace `touhou12.nro` in `sd:/switch/touhou/touhou12/`. Saves and replays are kept.
+
+---
+
 ## Touhou 12 — 1.00b-r1 (first release)
 
 A native Nintendo Switch port of Touhou 12: Undefined Fantastic Object ver 1.00b, built on Tweet-META's TH12 C++20 reimplementation and compiled natively for ARM64.

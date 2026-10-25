@@ -72,7 +72,7 @@ if(NINTENDO_SWITCH)
     nx_generate_nacp(OUTPUT "${CMAKE_BINARY_DIR}/touhou12-base.nacp"
         NAME "Touhou 12: Undefined Fantastic Object"
         AUTHOR "Team Shanghai Alice"
-        VERSION "1.00b-r1")
+        VERSION "1.00b-r2")
     add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/touhou12.nacp"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/nacp_lang.py"
                 "${CMAKE_BINARY_DIR}/touhou12-base.nacp" "${CMAKE_BINARY_DIR}/touhou12.nacp"

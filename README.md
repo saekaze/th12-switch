@@ -13,7 +13,12 @@ Companion to my other Touhou Switch ports — all of them are listed on the [Tou
 
 ---
 
-## 🆕 First release (1.00b-r1)
+## 🆕 What's New — 1.00b-r2
+
+* 🎬 **Stage transitions like the original:** after a stage clear the field fades out and the next stage fades in, with no black loading screen in between. Replays play the clear sequence too.
+* ⚡ **Smoother boss fights:** fewer frame drops in dense patterns (music is read ahead in the background, lighter drawing and memory work).
+
+## First release (1.00b-r1)
 
 * 🛸 The full game: Reimu, Marisa and Sanae with both shot types, every difficulty, all 6 stages and Extra, the UFO system, Practice, the twelve endings and the staff roll.
 * 🎬 Replays, Score Ranking with name entry, Player Data, Music Room and the title demo — the original menus, drawn from your own `th12.dat`.

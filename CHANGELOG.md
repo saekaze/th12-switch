@@ -1,5 +1,13 @@
 # Changelog — Touhou 12 Switch port
 
+## Touhou 12: Undefined Fantastic Object — Switch Port r2
+
+* **Stage transitions like the original:** the original builds the next stage as its 30-tick field fade ends, so the background fades out and the next one fades in with the player and HUD on screen. The port blacked out the field behind a loading indicator instead. The next stage is now read on a loader thread during the clear bonus and takes over within the frame.
+* **Replays** of story and Extra runs play the clear sequence and fades instead of holding the picture still.
+* **Smoother boss fights:** BGM is read ahead on its own thread (no SD card reads on the game thread), one vertex buffer per frame instead of one per draw, no per-frame hash maps for bullets, and a small-block pool for the many small allocations of a busy frame.
+* `th12-switch.log` adds frame pacing per minute of play (late frames, slowest frame) and stage switch times.
+* Display version `1.00b-r2`.
+
 ## Touhou 12: Undefined Fantastic Object — Switch Port r1
 
 First release (display version `1.00b-r1`).
